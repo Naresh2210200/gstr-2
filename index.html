@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GSTR-2A Bulk Converter</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #f0f4ff;
+      --card: #ffffff;
+      --primary: #2563eb;
+      --primary-dark: #1e40af;
+      --primary-light: #dbeafe;
+      --success: #10b981;
+      --success-light: #d1fae5;
+      --danger: #ef4444;
+      --danger-light: #fee2e2;
+      --warn: #f59e0b;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --shadow: 0 4px 6px -1px rgba(37,99,235,0.08), 0 2px 4px -1px rgba(37,99,235,0.04);
+      --shadow-lg: 0 20px 40px -8px rgba(37,99,235,0.15), 0 8px 16px -4px rgba(37,99,235,0.08);
+    }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 2rem 1rem;
+      color: var(--text);
+    }
+
+    .container { max-width: 960px; margin: 0 auto; }
+
+    /* ── HEADER ── */
+    .header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+      animation: slideDown 0.6s cubic-bezier(.22,1,.36,1) both;
+    }
+    .header-icon {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 72px; height: 72px; background: rgba(255,255,255,0.2);
+      border-radius: 20px; margin-bottom: 1rem; font-size: 2rem;
+      backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.3);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+    }
+    .header h1 {
+      font-family: 'Space Mono', monospace;
+      font-size: 2.4rem; font-weight: 700;
+      color: #fff;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      letter-spacing: -1px;
+      margin-bottom: 0.5rem;
+    }
+    .header p { color: rgba(255,255,255,0.88); font-size: 1rem; font-weight: 400; }
+    .header .badge {
+      display: inline-block; margin-top: 0.75rem;
+      background: rgba(255,255,255,0.18); backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: #fff; padding: 0.35rem 1rem; border-radius: 20px; font-size: 0.82rem;
+      font-family: 'Space Mono', monospace;
+    }
+
+    /* ── CARD ── */
+    .card {
+      background: var(--card); border-radius: 20px; padding: 2rem;
+      box-shadow: var(--shadow-lg);
+      animation: slideUp 0.5s cubic-bezier(.22,1,.36,1) both;
+      margin-bottom: 1.25rem;
+    }
+    .card:nth-child(2) { animation-delay: 0.05s; }
+    .card:nth-child(3) { animation-delay: 0.1s; }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+
+    /* ── STEP HEADER ── */
+    .step-header { display: flex; align-items: center; gap: 0.85rem; margin-bottom: 1.5rem; }
+    .step-num {
+      width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: #fff; display: flex; align-items: center; justify-content: center;
+      font-family: 'Space Mono', monospace; font-size: 0.9rem; font-weight: 700;
+      box-shadow: 0 4px 12px rgba(37,99,235,0.35);
+    }
+    .step-title { font-size: 1.15rem; font-weight: 700; color: var(--text); }
+
+    /* ── UPLOAD ZONE ── */
+    .upload-zone {
+      border: 2.5px dashed var(--border); border-radius: 16px;
+      padding: 3.5rem 2rem; text-align: center; background: #f8faff;
+      cursor: pointer; transition: all 0.25s ease; position: relative;
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: var(--primary); background: var(--primary-light);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(37,99,235,0.12);
+    }
+    .upload-zone .upload-icon { font-size: 3rem; margin-bottom: 1rem; display: block; }
+    .upload-zone h3 { font-size: 1.1rem; font-weight: 700; color: var(--text); margin-bottom: 0.4rem; }
+    .upload-zone p { font-size: 0.88rem; color: var(--text-muted); margin-bottom: 0.25rem; }
+    .upload-zone .hint {
+      display: inline-flex; gap: 0.4rem; align-items: center;
+      margin-top: 0.75rem; font-size: 0.8rem; color: var(--text-muted);
+    }
+    .upload-zone .hint kbd {
+      background: #e2e8f0; border: 1px solid #cbd5e1;
+      padding: 0.1rem 0.45rem; border-radius: 5px;
+      font-family: 'Space Mono', monospace; font-size: 0.75rem;
+    }
+    input[type="file"] { display: none; }
+
+    /* ── CHOOSE FILES BUTTON ── */
+    .choose-btn {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      margin-top: 1.5rem;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: #fff; border: none; padding: 0.75rem 2rem; border-radius: 10px;
+      font-size: 1rem; font-weight: 700; cursor: pointer;
+      font-family: 'Space Mono', monospace; letter-spacing: 0.5px;
+      box-shadow: 0 4px 16px rgba(37,99,235,0.35);
+      transition: all 0.2s ease;
+    }
+    .choose-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(37,99,235,0.4); }
+
+    /* ── FILE LIST ── */
+    .file-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 0.75rem; margin-top: 1.25rem;
+    }
+    .file-item {
+      background: #f8faff; border: 1px solid var(--border); border-radius: 10px;
+      padding: 0.85rem 1rem; display: flex; align-items: center; gap: 0.75rem;
+      animation: fadeIn 0.25s ease both; transition: all 0.2s ease;
+    }
+    .file-item:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+    .file-item .file-icon { font-size: 1.4rem; flex-shrink: 0; }
+    .file-item .file-info { flex: 1; min-width: 0; }
+    .file-item .file-name {
+      font-size: 0.82rem; font-weight: 600; color: var(--text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .file-item .file-size { font-size: 0.72rem; color: var(--text-muted); margin-top: 1px; }
+    .file-item .remove-btn {
+      background: none; border: none; color: var(--text-muted); cursor: pointer;
+      font-size: 1.1rem; padding: 0.2rem; border-radius: 4px;
+      transition: all 0.15s ease; flex-shrink: 0;
+    }
+    .file-item .remove-btn:hover { background: var(--danger-light); color: var(--danger); }
+
+    /* ── PROCESS BUTTON ── */
+    .process-btn {
+      display: flex; align-items: center; justify-content: center; gap: 0.6rem;
+      width: 100%; padding: 1.1rem;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: #fff; border: none; border-radius: 12px;
+      font-size: 1.1rem; font-weight: 700; cursor: pointer;
+      font-family: 'Space Mono', monospace; letter-spacing: 1px; text-transform: uppercase;
+      box-shadow: 0 6px 20px rgba(37,99,235,0.35);
+      transition: all 0.25s ease; margin-top: 1.5rem;
+    }
+    .process-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(37,99,235,0.45); }
+    .process-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+    /* ── PROGRESS ── */
+    .progress-wrap { margin-top: 0.75rem; }
+    .progress-bar {
+      width: 100%; height: 10px; background: var(--border);
+      border-radius: 10px; overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, var(--primary), var(--success));
+      border-radius: 10px; transition: width 0.35s ease;
+    }
+    .progress-label { font-size: 0.82rem; color: var(--text-muted); margin-top: 0.4rem; }
+
+    /* ── PROCESSING CARD ── */
+    .processing-card { display: flex; align-items: center; gap: 1rem; }
+    .spinner {
+      width: 28px; height: 28px; border: 3px solid var(--primary-light);
+      border-top-color: var(--primary); border-radius: 50%;
+      animation: spin 0.7s linear infinite; flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .processing-text { font-size: 1rem; font-weight: 600; color: var(--text); }
+    .processing-sub { font-size: 0.82rem; color: var(--text-muted); margin-top: 2px; }
+
+    /* ── STATS GRID ── */
+    .stats-grid {
+      display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+    @media (max-width: 640px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+    .stat-box {
+      border-radius: 12px; padding: 1rem; text-align: center;
+      animation: fadeIn 0.3s ease both;
+    }
+    .stat-box .stat-label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.25rem; }
+    .stat-box .stat-val { font-size: 1.6rem; font-weight: 700; font-family: 'Space Mono', monospace; }
+    .stat-blue  { background: #eff6ff; } .stat-blue  .stat-val { color: var(--primary); }
+    .stat-green { background: #f0fdf4; } .stat-green .stat-val { color: var(--success); }
+    .stat-red   { background: #fef2f2; } .stat-red   .stat-val { color: var(--danger); }
+    .stat-purple{ background: #faf5ff; } .stat-purple .stat-val { color: #7c3aed; }
+    .stat-indigo{ background: #eef2ff; } .stat-indigo .stat-val { color: #4338ca; }
+
+    /* ── ZIP DOWNLOAD BOX ── */
+    .zip-box {
+      background: linear-gradient(135deg, #f0fdf4, #ecfdf5);
+      border: 2px solid #86efac; border-radius: 16px; padding: 1.5rem;
+    }
+    .zip-box-inner {
+      display: flex; flex-direction: column; gap: 1.25rem;
+    }
+    @media (min-width: 640px) {
+      .zip-box-inner { flex-direction: row; align-items: center; justify-content: space-between; }
+    }
+    .zip-box h3 { font-size: 1.05rem; font-weight: 700; color: #166534; margin-bottom: 0.25rem; }
+    .zip-box p  { font-size: 0.83rem; color: #15803d; }
+    .zip-btn {
+      display: inline-flex; align-items: center; gap: 0.6rem;
+      background: linear-gradient(135deg, #16a34a, #15803d);
+      color: #fff; border: none; padding: 1rem 2rem; border-radius: 12px;
+      font-size: 1rem; font-weight: 700; cursor: pointer;
+      font-family: 'Space Mono', monospace;
+      box-shadow: 0 4px 16px rgba(22,163,74,0.35);
+      transition: all 0.25s ease; white-space: nowrap;
+    }
+    .zip-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(22,163,74,0.45); }
+    .zip-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+
+    /* ── DONE HEADER ── */
+    .done-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; }
+    .done-title { display: flex; align-items: center; gap: 0.6rem; }
+    .done-title h2 { font-size: 1.5rem; font-weight: 700; color: var(--text); }
+    .check-icon { font-size: 1.6rem; }
+    .reset-btn {
+      display: flex; align-items: center; gap: 0.4rem;
+      background: none; border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text-muted); padding: 0.4rem 0.85rem; cursor: pointer;
+      font-size: 0.82rem; transition: all 0.2s ease;
+    }
+    .reset-btn:hover { background: var(--danger-light); color: var(--danger); border-color: var(--danger); }
+
+    /* ── RESULTS LIST ── */
+    .results-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+    .results-title { font-size: 1.1rem; font-weight: 700; color: var(--text); }
+    .results-count {
+      font-family: 'Space Mono', monospace; font-size: 0.8rem;
+      background: var(--primary-light); color: var(--primary);
+      padding: 0.2rem 0.6rem; border-radius: 20px;
+    }
+    .results-scroll { max-height: 400px; overflow-y: auto; padding-right: 4px; display: flex; flex-direction: column; gap: 0.5rem; }
+    .results-scroll::-webkit-scrollbar { width: 5px; }
+    .results-scroll::-webkit-scrollbar-track { background: transparent; }
+    .results-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+
+    .result-row {
+      border-radius: 10px; overflow: hidden;
+      border: 1px solid;
+      animation: fadeIn 0.2s ease both;
+    }
+    .result-row.success { background: #f0fdf4; border-color: #bbf7d0; }
+    .result-row.error   { background: #fef2f2; border-color: #fecaca; }
+
+    .result-top {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.75rem 1rem; cursor: pointer; transition: background 0.15s;
+    }
+    .result-top:hover { filter: brightness(0.97); }
+    .result-left { display: flex; align-items: center; gap: 0.6rem; min-width: 0; flex: 1; }
+    .result-icon { font-size: 1rem; flex-shrink: 0; }
+    .result-name { font-size: 0.85rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .result-right { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; margin-left: 0.75rem; }
+    .rec-badge {
+      font-size: 0.72rem; color: var(--text-muted);
+      background: rgba(0,0,0,0.04); padding: 0.15rem 0.5rem; border-radius: 6px;
+    }
+    .save-btn {
+      display: flex; align-items: center; gap: 0.3rem;
+      background: var(--primary); color: #fff; border: none;
+      padding: 0.3rem 0.65rem; border-radius: 6px; font-size: 0.75rem;
+      cursor: pointer; transition: all 0.15s ease;
+    }
+    .save-btn:hover { background: var(--primary-dark); }
+    .fail-badge { font-size: 0.75rem; color: var(--danger); font-weight: 600; }
+    .chevron { font-size: 0.8rem; color: var(--text-muted); transition: transform 0.2s; }
+    .chevron.open { transform: rotate(180deg); }
+
+    .result-detail {
+      display: none; padding: 0.75rem 1rem; border-top: 1px solid rgba(0,0,0,0.06);
+      font-size: 0.82rem;
+    }
+    .result-detail.open { display: block; }
+    .detail-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+    @media (min-width: 640px) { .detail-grid { grid-template-columns: repeat(4, 1fr); } }
+    .detail-item .detail-label { color: var(--text-muted); margin-bottom: 1px; }
+    .detail-item .detail-val { font-weight: 600; color: var(--text); }
+    .error-msg { color: var(--danger); font-weight: 500; }
+
+    @media (max-width: 640px) {
+      body { padding: 1rem 0.75rem; }
+      .header h1 { font-size: 1.75rem; }
+      .card { padding: 1.25rem; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-icon">📊</div>
+    <h1>GSTR-2A Bulk Converter</h1>
+    <p>Upload 100–200 files → Convert all → Download as one ZIP</p>
+    <div class="badge">✨ B2B · CDNR · B2B-CDNR Supported</div>
+  </div>
+
+  <!-- STEP 1: UPLOAD -->
+  <div class="card" id="uploadCard">
+    <div class="step-header">
+      <div class="step-num">1</div>
+      <div class="step-title">Select GSTR-2A Excel Files</div>
+    </div>
+
+    <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+      <span class="upload-icon">📁</span>
+      <h3>Click or drag your GSTR-2A files here</h3>
+      <p>Supports .xlsx / .xls — B2B, CDNR, B2B-CDNR sheets</p>
+      <div class="hint">
+        Hold <kbd>Ctrl</kbd> or <kbd>Shift</kbd> to select multiple files
+      </div>
+      <button class="choose-btn" onclick="event.stopPropagation(); document.getElementById('fileInput').click()">
+        📂 Choose Files
+      </button>
+    </div>
+    <input type="file" id="fileInput" accept=".xlsx,.xls" multiple />
+    <div class="file-list" id="fileList"></div>
+  </div>
+
+  <!-- STEP 2: PROCESS -->
+  <div class="card">
+    <div class="step-header">
+      <div class="step-num">2</div>
+      <div class="step-title">Process &amp; Download</div>
+    </div>
+    <button class="process-btn" id="processBtn" disabled onclick="startProcessing()">
+      🚀 PROCESS &amp; DOWNLOAD
+    </button>
+    <div class="progress-wrap" id="progressWrap" style="display:none">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-label" id="progressLabel">0% complete</div>
+    </div>
+  </div>
+
+  <!-- PROCESSING STATE -->
+  <div class="card" id="processingCard" style="display:none">
+    <div class="processing-card">
+      <div class="spinner"></div>
+      <div>
+        <div class="processing-text" id="processingText">Processing files…</div>
+        <div class="processing-sub" id="processingSubText">Please wait</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="card" id="resultsCard" style="display:none">
+    <!-- Done header -->
+    <div class="done-header">
+      <div class="done-title">
+        <span class="check-icon">✅</span>
+        <h2>All Done!</h2>
+      </div>
+      <button class="reset-btn" onclick="resetAll()">✕ Start Over</button>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid" id="statsGrid"></div>
+
+    <!-- ZIP Download -->
+    <div class="zip-box" id="zipBox">
+      <div class="zip-box-inner">
+        <div>
+          <h3>📦 Download All as ZIP</h3>
+          <p id="zipDesc">All converted files bundled into one ZIP.</p>
+          <p style="margin-top:4px">Save ZIP → Right-click → <strong>Extract All</strong> → Choose folder ✅</p>
+        </div>
+        <button class="zip-btn" id="zipBtn" onclick="downloadZip()">
+          ⬇ Download ZIP
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PER-FILE LIST -->
+  <div class="card" id="fileResultsCard" style="display:none">
+    <div class="results-header">
+      <div class="results-title">File Results</div>
+      <div class="results-count" id="resultsCount">0 processed</div>
+    </div>
+    <div class="results-scroll" id="resultsList"></div>
+  </div>
+
+</div>
+
+<script>
+  // ─── STATE ───────────────────────────────────────────────────────
+  let selectedFiles = [];
+  let processedResults = [];
+
+  // ─── DRAG & DROP ─────────────────────────────────────────────────
+  const zone = document.getElementById('uploadZone');
+  ['dragenter','dragover','dragleave','drop'].forEach(ev =>
+    zone.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); })
+  );
+  ['dragenter','dragover'].forEach(ev => zone.addEventListener(ev, () => zone.classList.add('dragover')));
+  ['dragleave','drop'].forEach(ev => zone.addEventListener(ev, () => zone.classList.remove('dragover')));
+  zone.addEventListener('drop', e => {
+    const files = Array.from(e.dataTransfer.files).filter(f => f.name.match(/\.(xlsx|xls)$/i));
+    addFiles(files);
+  });
+  document.getElementById('fileInput').addEventListener('change', e => {
+    addFiles(Array.from(e.target.files).filter(f => f.name.match(/\.(xlsx|xls)$/i)));
+    e.target.value = '';
+  });
+
+  function addFiles(files) {
+    files.forEach(f => {
+      if (!selectedFiles.find(x => x.name === f.name && x.size === f.size)) selectedFiles.push(f);
+    });
+    renderFileList();
+    document.getElementById('processBtn').disabled = selectedFiles.length === 0;
+  }
+
+  function removeFile(idx) {
+    selectedFiles.splice(idx, 1);
+    renderFileList();
+    document.getElementById('processBtn').disabled = selectedFiles.length === 0;
+  }
+
+  function renderFileList() {
+    const list = document.getElementById('fileList');
+    if (selectedFiles.length === 0) { list.innerHTML = ''; return; }
+    list.innerHTML = selectedFiles.map((f, i) => `
+      <div class="file-item">
+        <span class="file-icon">📗</span>
+        <div class="file-info">
+          <div class="file-name" title="${f.name}">${f.name}</div>
+          <div class="file-size">${fmtSize(f.size)}</div>
+        </div>
+        <button class="remove-btn" onclick="removeFile(${i})" title="Remove">✕</button>
+      </div>
+    `).join('');
+  }
+
+  function fmtSize(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+    return (b/1048576).toFixed(1) + ' MB';
+  }
+
+  // ─── EXCEL DATE PARSER ───────────────────────────────────────────
+  function parseExcelDate(value) {
+    if (!value) return '';
+    if (typeof value === 'string' && value.match(/^\d{2}-\d{2}-\d{4}$/)) return value;
+    if (typeof value === 'number') {
+      const d = new Date((value - 25569) * 86400 * 1000);
+      return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
+    }
+    return value;
+  }
+
+  function fmtNum(v) {
+    if (!v && v !== 0) return '';
+    const n = parseFloat(v);
+    return isNaN(n) ? '' : n.toFixed(2);
+  }
+
+  // ─── SHEET PROCESSOR ─────────────────────────────────────────────
+  function processSheet(sheet, sheetName) {
+    const statedRange = XLSX.utils.decode_range(sheet['!ref']);
+    let lastRow = statedRange.e.r;
+    for (let r = statedRange.e.r + 1; r <= 200; r++) {
+      let has = false;
+      for (let c = 0; c <= 25; c++) {
+        const cell = sheet[XLSX.utils.encode_cell({r, c})];
+        if (cell && (cell.v !== undefined || cell.w !== undefined)) { has = true; lastRow = Math.max(lastRow, r); break; }
+      }
+      if (!has && r > lastRow + 5) break;
+    }
+    const range = { s: statedRange.s, e: { r: lastRow, c: statedRange.e.c } };
+
+    let headerRow = -1;
+    for (let r = 0; r <= Math.min(20, range.e.r); r++) {
+      const cell = sheet[XLSX.utils.encode_cell({r, c:0})];
+      const v = cell ? (cell.w || (cell.v !== undefined ? String(cell.v) : '') || '').trim() : '';
+      if (v.toLowerCase().includes('gstin of supplier')) { headerRow = r; break; }
+    }
+    if (headerRow === -1) return [];
+
+    const headers = [];
+    for (let c = 0; c <= range.e.c; c++) {
+      const c1 = sheet[XLSX.utils.encode_cell({r: headerRow,   c})];
+      const c2 = sheet[XLSX.utils.encode_cell({r: headerRow+1, c})];
+      const v1 = c1 ? (c1.w || (c1.v !== undefined ? String(c1.v) : '') || '').trim() : '';
+      const v2 = c2 ? (c2.w || (c2.v !== undefined ? String(c2.v) : '') || '').trim() : '';
+      headers.push(v2 || v1 || '');
+    }
+
+    const find = (terms) => {
+      if (!Array.isArray(terms)) terms = [terms];
+      for (const t of terms) {
+        const i = headers.findIndex(h => h && h.toLowerCase().includes(t.toLowerCase()));
+        if (i >= 0) return i;
+      }
+      return -1;
+    };
+
+    const cols = {
+      gstin:        find(['GSTIN of supplier','GSTIN']),
+      tradeName:    find(['Trade/Legal name','Trade name']),
+      invoiceNum:   find(['Invoice number','Note number']),
+      invoiceDate:  find(['Invoice Date','Note date']),
+      rate:         find(['Rate (%)','Rate']),
+      taxableValue: find(['Taxable Value']),
+      stateTax:     find(['State/UT tax']),
+      centralTax:   find(['Central Tax']),
+      integratedTax:find(['Integrated Tax']),
+      invoiceValue: find(['Invoice Value','Note Value'])
+    };
+
+    const out = [];
+    for (let r = headerRow + 2; r <= range.e.r; r++) {
+      const row = []; let hasData = false;
+      for (let c = 0; c <= range.e.c; c++) {
+        const cell = sheet[XLSX.utils.encode_cell({r, c})];
+        const v = cell ? (cell.w !== undefined ? String(cell.w) : (cell.v !== undefined ? String(cell.v) : '')).trim() : '';
+        row.push(v); if (v) hasData = true;
+      }
+      if (!hasData) continue;
+      const gstin = cols.gstin >= 0 ? String(row[cols.gstin]||'').trim() : '';
+      const inv   = cols.invoiceNum >= 0 ? String(row[cols.invoiceNum]||'').trim() : '';
+      if (!gstin && !inv) continue;
+
+      out.push({
+        'SUPPLIER INV NO': inv,
+        'INVOICE DATE':    cols.invoiceDate  >= 0 ? parseExcelDate(row[cols.invoiceDate]) : '',
+        'GST NO':          gstin,
+        'PARTY A/C NAME':  cols.tradeName    >= 0 ? String(row[cols.tradeName]||'').trim() : '',
+        'PLACE OF SUPPLY': '',
+        'Rate (%)':        cols.rate         >= 0 ? String(row[cols.rate]||'').trim() : '',
+        'Taxable Value (₹)': cols.taxableValue >= 0 ? fmtNum(row[cols.taxableValue]) : '',
+        'SGST':            cols.stateTax     >= 0 ? fmtNum(row[cols.stateTax]) : '',
+        'CGST':            cols.centralTax   >= 0 ? fmtNum(row[cols.centralTax]) : '',
+        'IGST':            cols.integratedTax>= 0 ? fmtNum(row[cols.integratedTax]) : '',
+        'TOTAL AMOUNT':    cols.invoiceValue >= 0 ? fmtNum(row[cols.invoiceValue]) : '',
+        'VOUCHER NO':      inv,
+        'ROUND':           '',
+        'SOURCE':          sheetName
+      });
+    }
+    return out;
+  }
+
+  // ─── PROCESS SINGLE FILE ─────────────────────────────────────────
+  async function processSingleFile(file) {
+    try {
+      const data = await file.arrayBuffer();
+      const wb = XLSX.read(data, { type: 'array' });
+      const skip = ['READ ME','SUMMARY','README'];
+      const b2b    = wb.SheetNames.find(n => n.toUpperCase() === 'B2B'      && !skip.includes(n.toUpperCase()));
+      const cdnr   = wb.SheetNames.find(n => n.toUpperCase() === 'CDNR'     && !skip.includes(n.toUpperCase()));
+      const b2bcdnr= wb.SheetNames.find(n => ['B2B-CDNR','B2BCDNR'].includes(n.toUpperCase()) && !skip.includes(n.toUpperCase()));
+
+      if (!b2b && !cdnr && !b2bcdnr) throw new Error('No B2B/CDNR sheets found');
+
+      let allData = []; const sheets = [];
+      if (b2b)     { const d = processSheet(wb.Sheets[b2b],     'B2B');     allData = allData.concat(d); if(d.length) sheets.push(`B2B (${d.length})`); }
+      if (cdnr)    { const d = processSheet(wb.Sheets[cdnr],    'CDNR');    allData = allData.concat(d); if(d.length) sheets.push(`CDNR (${d.length})`); }
+      if (b2bcdnr) { const d = processSheet(wb.Sheets[b2bcdnr], 'B2B-CDNR');allData = allData.concat(d); if(d.length) sheets.push(`B2B-CDNR (${d.length})`); }
+
+      if (allData.length === 0) throw new Error('No valid data found');
+
+      return {
+        fileName: file.name,
+        baseName: file.name.replace(/\.[^/.]+$/, ''),
+        status: 'success', allData, sheets,
+        records: allData.length,
+        totalTaxable: allData.reduce((s,r) => s + (parseFloat(r['Taxable Value (₹)'])||0), 0),
+        totalAmount:  allData.reduce((s,r) => s + (parseFloat(r['TOTAL AMOUNT'])||0), 0)
+      };
+    } catch(err) {
+      return { fileName: file.name, baseName: file.name.replace(/\.[^/.]+$/,''), status:'error', error:err.message, records:0 };
+    }
+  }
+
+  // ─── BUILD WORKBOOK BUFFER ────────────────────────────────────────
+  function buildBuffer(result) {
+    const wb = XLSX.utils.book_new();
+    ['B2B','B2B-CDNR','CDNR'].forEach(src => {
+      const rows = result.allData.filter(r => r.SOURCE === src).map(({SOURCE,...rest}) => rest);
+      if (rows.length) {
+        const ws = XLSX.utils.json_to_sheet(rows);
+        ws['!cols'] = Array(14).fill({wch:15});
+        XLSX.utils.book_append_sheet(wb, ws, src);
+      }
+    });
+    return XLSX.write(wb, { bookType:'xlsx', type:'array' });
+  }
+
+  // ─── MAIN PROCESSING FLOW ─────────────────────────────────────────
+  async function startProcessing() {
+    if (!selectedFiles.length) return;
+
+    // hide upload step, show processing
+    document.getElementById('uploadCard').style.display = 'none';
+    document.getElementById('processBtn').parentElement.parentElement.style.display = 'none';
+    document.getElementById('processingCard').style.display = 'block';
+    document.getElementById('fileResultsCard').style.display = 'block';
+
+    processedResults = [];
+    const total = selectedFiles.length;
+
+    for (let i = 0; i < total; i++) {
+      document.getElementById('processingText').textContent = `Processing file ${i+1} of ${total}…`;
+      document.getElementById('processingSubText').textContent = selectedFiles[i].name;
+
+      const res = await processSingleFile(selectedFiles[i]);
+      processedResults.push(res);
+      renderResultRow(res, processedResults.length - 1);
+      document.getElementById('resultsCount').textContent = `${processedResults.length} / ${total}`;
+    }
+
+    // done
+    document.getElementById('processingCard').style.display = 'none';
+    showFinalStats();
+  }
+
+  // ─── RENDER RESULT ROW ────────────────────────────────────────────
+  function renderResultRow(r, idx) {
+    const list = document.getElementById('resultsList');
+    const div = document.createElement('div');
+    div.className = `result-row ${r.status}`;
+    div.id = `row-${idx}`;
+
+    if (r.status === 'success') {
+      div.innerHTML = `
+        <div class="result-top" onclick="toggleDetail(${idx})">
+          <div class="result-left">
+            <span class="result-icon">✅</span>
+            <span class="result-name" title="${r.fileName}">${r.fileName}</span>
+          </div>
+          <div class="result-right">
+            <span class="rec-badge">${r.records} records</span>
+            <button class="save-btn" onclick="event.stopPropagation(); downloadSingle(${idx})">⬇ Save</button>
+            <span class="chevron" id="chev-${idx}">▼</span>
+          </div>
+        </div>
+        <div class="result-detail" id="detail-${idx}">
+          <div class="detail-grid">
+            <div class="detail-item"><div class="detail-label">Sheets</div><div class="detail-val">${r.sheets.join(', ')}</div></div>
+            <div class="detail-item"><div class="detail-label">Records</div><div class="detail-val">${r.records}</div></div>
+            <div class="detail-item"><div class="detail-label">Taxable</div><div class="detail-val">₹${r.totalTaxable.toFixed(2)}</div></div>
+            <div class="detail-item"><div class="detail-label">Total</div><div class="detail-val">₹${r.totalAmount.toFixed(2)}</div></div>
+          </div>
+        </div>`;
+    } else {
+      div.innerHTML = `
+        <div class="result-top" onclick="toggleDetail(${idx})">
+          <div class="result-left">
+            <span class="result-icon">❌</span>
+            <span class="result-name" title="${r.fileName}">${r.fileName}</span>
+          </div>
+          <div class="result-right">
+            <span class="fail-badge">Failed</span>
+            <span class="chevron" id="chev-${idx}">▼</span>
+          </div>
+        </div>
+        <div class="result-detail" id="detail-${idx}">
+          <p class="error-msg">Error: ${r.error}</p>
+        </div>`;
+    }
+    list.appendChild(div);
+    list.scrollTop = list.scrollHeight;
+  }
+
+  function toggleDetail(idx) {
+    const det = document.getElementById(`detail-${idx}`);
+    const chev = document.getElementById(`chev-${idx}`);
+    det.classList.toggle('open');
+    chev.classList.toggle('open');
+  }
+
+  // ─── FINAL STATS ──────────────────────────────────────────────────
+  function showFinalStats() {
+    const success = processedResults.filter(r => r.status === 'success');
+    const failed  = processedResults.filter(r => r.status === 'error');
+    const totalRec = success.reduce((s,r) => s+r.records, 0);
+    const totalAmt = success.reduce((s,r) => s+r.totalAmount, 0);
+
+    document.getElementById('statsGrid').innerHTML = `
+      <div class="stat-box stat-blue"><div class="stat-label">Total Files</div><div class="stat-val">${processedResults.length}</div></div>
+      <div class="stat-box stat-green"><div class="stat-label">Successful</div><div class="stat-val">${success.length}</div></div>
+      <div class="stat-box stat-red"><div class="stat-label">Failed</div><div class="stat-val">${failed.length}</div></div>
+      <div class="stat-box stat-purple"><div class="stat-label">Total Records</div><div class="stat-val">${totalRec}</div></div>
+      <div class="stat-box stat-indigo"><div class="stat-label">Total Amount</div><div class="stat-val">₹${totalAmt.toFixed(0)}</div></div>
+    `;
+
+    document.getElementById('zipDesc').textContent = `All ${success.length} converted files bundled into one ZIP.`;
+    document.getElementById('zipBtn').textContent = `⬇ Download ZIP (${success.length} files)`;
+    document.getElementById('resultsCard').style.display = 'block';
+    document.getElementById('resultsCount').textContent = `${processedResults.length} processed`;
+  }
+
+  // ─── DOWNLOAD SINGLE ──────────────────────────────────────────────
+  function downloadSingle(idx) {
+    const result = processedResults[idx];
+    const buf = buildBuffer(result);
+    const blob = new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${result.baseName}.xlsx`;
+    a.click();
+  }
+
+  // ─── DOWNLOAD ZIP ─────────────────────────────────────────────────
+  async function downloadZip() {
+    const btn = document.getElementById('zipBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Creating ZIP…';
+
+    try {
+      const zip = new JSZip();
+      const successful = processedResults.filter(r => r.status === 'success');
+      for (const r of successful) {
+        zip.file(`${r.baseName}.xlsx`, buildBuffer(r));
+      }
+      const blob = await zip.generateAsync({ type:'blob', compression:'DEFLATE', compressionOptions:{ level:6 } });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `GSTR2A_Converted_${successful.length}_files.zip`;
+      a.click();
+    } catch(err) {
+      alert('Error creating ZIP: ' + err.message);
+    }
+
+    btn.disabled = false;
+    btn.textContent = `⬇ Download ZIP (${processedResults.filter(r=>r.status==='success').length} files)`;
+  }
+
+  // ─── RESET ────────────────────────────────────────────────────────
+  function resetAll() {
+    selectedFiles = [];
+    processedResults = [];
+    document.getElementById('fileList').innerHTML = '';
+    document.getElementById('resultsList').innerHTML = '';
+    document.getElementById('uploadCard').style.display = 'block';
+    document.getElementById('processBtn').parentElement.parentElement.style.display = 'block';
+    document.getElementById('processingCard').style.display = 'none';
+    document.getElementById('resultsCard').style.display = 'none';
+    document.getElementById('fileResultsCard').style.display = 'none';
+    document.getElementById('processBtn').disabled = true;
+    document.getElementById('progressWrap').style.display = 'none';
+    document.getElementById('progressFill').style.width = '0%';
+  }
+</script>
+</body>
+</html>
