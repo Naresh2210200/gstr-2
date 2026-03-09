@@ -1,16 +1,9 @@
+'use client';
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Upload, Download, FileSpreadsheet, CheckCircle, AlertCircle, FolderOpen, X, ChevronDown, ChevronUp } from 'lucide-react';
 import * as XLSX from 'xlsx';
-
-// Load JSZip from CDN
-const loadJSZip = () => new Promise((resolve, reject) => {
-  if (window.JSZip) return resolve(window.JSZip);
-  const s = document.createElement('script');
-  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-  s.onload = () => resolve(window.JSZip);
-  s.onerror = reject;
-  document.head.appendChild(s);
-});
+import JSZip from 'jszip';
 
 const GSTRConverter = () => {
   const [files, setFiles] = useState([]);
@@ -210,7 +203,6 @@ const GSTRConverter = () => {
   const downloadAllAsZip = async () => {
     setZipping(true);
     try {
-      const JSZip = await loadJSZip();
       const zip = new JSZip();
       const successful = results.filter(r => r.status === 'success');
 
