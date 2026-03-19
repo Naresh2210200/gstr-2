@@ -381,17 +381,27 @@ function fmtSize(b) {
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 function parseExcelDate(value) {
   if (!value) return '';
-  if (typeof value === 'string' && value.match(/^\d{2}-\d{2}-\d{4}$/)) return value;
-  if (typeof value === 'number') {
-    const d = new Date((value - 25569) * 86400 * 1000);
-    return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
+  const s = String(value).trim();
+  // Already in DD-MM-YYYY format (2A files)
+  if (s.match(/^\d{2}-\d{2}-\d{4}$/)) return s;
+  // DD/MM/YYYY format (2B files use slashes)
+  if (s.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+    const [d, m, y] = s.split('/');
+    return `${d}-${m}-${y}`;
   }
-  return value;
+  // Excel serial date number
+  if (typeof value === 'number') {
+    const dt = new Date((value - 25569) * 86400 * 1000);
+    return `${String(dt.getDate()).padStart(2,'0')}-${String(dt.getMonth()+1).padStart(2,'0')}-${dt.getFullYear()}`;
+  }
+  return s;
 }
 
 function fmtNum(v) {
   if (!v && v !== 0) return '';
-  const n = parseFloat(v);
+  // Strip commas from formatted strings like "2,500.00" before parsing
+  const cleaned = typeof v === 'string' ? v.replace(/,/g, '') : v;
+  const n = parseFloat(cleaned);
   return isNaN(n) ? '' : n.toFixed(2);
 }
 
@@ -418,20 +428,20 @@ function processSheet(sheet, sheetName) {
     const cell = sheet[XLSX.utils.encode_cell({r, c:0})];
     let v = '';
     if (cell) {
-      v = (cell.w || (cell.v !== undefined ? String(cell.v) : '') || '').trim();
+      v = (cell.w || (cell.v !== undefined ? String(cell.v) : '') || '').trim().replace(/\s+/g, ' ');
     }
     if (v.toLowerCase().includes('gstin of supplier')) { headerRow = r; break; }
   }
   if (headerRow === -1) return [];
 
-  // Build merged headers from row1 + row2
+  // Build merged headers from row1 + row2 — normalize whitespace to avoid double-space bugs
   const headers = [];
   for (let c = 0; c <= range.e.c; c++) {
     const c1 = sheet[XLSX.utils.encode_cell({r: headerRow,   c})];
     const c2 = sheet[XLSX.utils.encode_cell({r: headerRow+1, c})];
     let v1 = '', v2 = '';
-    if (c1) { v1 = (c1.w || (c1.v !== undefined ? String(c1.v) : '') || '').trim(); }
-    if (c2) { v2 = (c2.w || (c2.v !== undefined ? String(c2.v) : '') || '').trim(); }
+    if (c1) { v1 = (c1.w || (c1.v !== undefined ? String(c1.v) : '') || '').trim().replace(/\s+/g, ' '); }
+    if (c2) { v2 = (c2.w || (c2.v !== undefined ? String(c2.v) : '') || '').trim().replace(/\s+/g, ' '); }
     headers.push(v2 && v2 !== 'undefined' ? v2 : (v1 && v1 !== 'undefined' ? v1 : ''));
   }
 
@@ -446,16 +456,17 @@ function processSheet(sheet, sheetName) {
   }
 
   const cols = {
-    gstin:         findCol(['GSTIN of supplier', 'GSTIN']),
-    tradeName:     findCol(['Trade/Legal name', 'Trade name']),
-    invoiceNumber: findCol(['Invoice number', 'Note number']),
-    invoiceDate:   findCol(['Invoice Date', 'Invoice date', 'Note date']),
-    rate:          findCol(['Rate (%)', 'Rate']),
-    taxableValue:  findCol(['Taxable Value (₹)', 'Taxable Value']),
-    stateTax:      findCol(['State/UT tax (₹)', 'State/UT tax', 'State/UT']),
-    centralTax:    findCol(['Central Tax (₹)', 'Central Tax']),
-    integratedTax: findCol(['Integrated Tax  (₹)', 'Integrated Tax (₹)', 'Integrated Tax']),
-    invoiceValue:  findCol(['Invoice Value (₹)', 'Invoice Value', 'Note Value'])
+    gstin:          findCol(['GSTIN of supplier', 'GSTIN']),
+    tradeName:      findCol(['Trade/Legal name', 'Trade name']),
+    invoiceNumber:  findCol(['Invoice number', 'Note number']),
+    invoiceDate:    findCol(['Invoice Date', 'Invoice date', 'Note date']),
+    rate:           findCol(['Rate (%)', 'Rate']),
+    taxableValue:   findCol(['Taxable Value (₹)', 'Taxable Value']),
+    stateTax:       findCol(['State/UT tax (₹)', 'State/UT tax', 'State/UT']),
+    centralTax:     findCol(['Central Tax (₹)', 'Central Tax']),
+    integratedTax:  findCol(['Integrated Tax  (₹)', 'Integrated Tax (₹)', 'Integrated Tax']),
+    invoiceValue:   findCol(['Invoice Value (₹)', 'Invoice Value', 'Note Value']),
+    reverseCharge:  findCol(['Supply Attract Reverse Charge', 'Reverse Charge', 'RCM'])
   };
 
   const dataStart = headerRow + 2;
@@ -479,6 +490,12 @@ function processSheet(sheet, sheetName) {
     const gstin = cols.gstin >= 0 ? String(row[cols.gstin]||'').trim() : '';
     const inv   = cols.invoiceNumber >= 0 ? String(row[cols.invoiceNumber]||'').trim() : '';
     if (!gstin && !inv) continue;
+
+    // Skip RCM (Reverse Charge) rows
+    if (cols.reverseCharge >= 0) {
+      const rcm = String(row[cols.reverseCharge]||'').trim().toLowerCase();
+      if (rcm === 'yes' || rcm === 'y') continue;
+    }
 
     out.push({
       'SUPPLIER INV NO':  inv,
