@@ -399,8 +399,11 @@ function parseExcelDate(value) {
 
 function fmtNum(v) {
   if (!v && v !== 0) return '';
-  // Strip commas from formatted strings like "2,500.00" before parsing
-  const cleaned = typeof v === 'string' ? v.replace(/,/g, '') : v;
+  // Strip commas AND currency symbols ($ ₹ £ € etc.) before parsing
+  // This handles cases where cell.w includes currency prefix from number format
+  const cleaned = typeof v === 'string'
+    ? v.replace(/[^0-9.\-]/g, '')   // keep only digits, dot, minus
+    : v;
   const n = parseFloat(cleaned);
   return isNaN(n) ? '' : n.toFixed(2);
 }
@@ -478,8 +481,16 @@ function processSheet(sheet, sheetName) {
       const cell = sheet[XLSX.utils.encode_cell({r, c})];
       let v = '';
       if (cell) {
-        if (cell.w !== undefined && cell.w !== null) v = String(cell.w);
-        else if (cell.v !== undefined && cell.v !== null) v = String(cell.v);
+        if (cell.t === 'n') {
+          // For NUMBER cells: always use raw cell.v to avoid currency/locale
+          // format issues e.g. [$-en-US] #,##0.00 renders as "$8,148.59"
+          // which breaks parseFloat. cell.v is always the clean number.
+          v = (cell.v !== undefined && cell.v !== null) ? String(cell.v) : '';
+        } else if (cell.w !== undefined && cell.w !== null) {
+          v = String(cell.w);
+        } else if (cell.v !== undefined && cell.v !== null) {
+          v = String(cell.v);
+        }
         if (typeof v === 'string') v = v.trim();
       }
       row.push(v);
